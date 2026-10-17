@@ -8,6 +8,7 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: "#FFF9F5" },
         headerTintColor: "#513D62",
         headerTitleStyle: { fontWeight: "600" },
+        headerShown: false,
         tabBarActiveTintColor: "#9465AD",
         tabBarInactiveTintColor: "#9C8FA5",
         tabBarStyle: {

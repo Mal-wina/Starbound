@@ -3,9 +3,10 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import "react-native-reanimated";
-import { AuthProvider } from "../providers/AuthProvider";
+import { AuthProvider, useAuth } from "../providers/AuthProvider";
 
 import { useColorScheme } from "@/components/useColorScheme";
+import { ActivityIndicator, View } from "react-native";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -52,12 +53,34 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#FBF2EC",
+        }}
+      >
+        <ActivityIndicator size="large" color="#AC6882" />
+      </View>
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+        </Stack.Protected>
+
+        <Stack.Protected guard={!!session}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+        </Stack.Protected>
       </Stack>
     </ThemeProvider>
   );

@@ -2,7 +2,6 @@ import { router } from "expo-router";
 import {
   Image,
   ImageSourcePropType,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,35 +9,35 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ReadingGoalCard from "../../components/ReadingGoalCard";
 
 import { theme } from "../../constants/theme";
 
 const colors = theme.colors;
-const serif = Platform.OS === "android" ? "serif" : "Georgia";
+const serif = "StorySerif";
 
-// Sample books for building the layout.
-// Later, these will come from your Supabase library.
+// Sample data until we connect Supabase.
 const books = [
   {
     id: "moon",
     title: "The Moonlit Garden",
     author: "Elara Vale",
     status: "Currently Reading",
-    artwork: require("../../assets/images/moon-garden-cover.png"),
+    artwork: require("../../assets/images/a-moonlit-garden.png"),
   },
   {
     id: "crown",
     title: "A Crown of Thorns",
     author: "Lyra Wren",
     status: "Finished",
-    artwork: require("../../assets/images/rose-crown-cover.png"),
+    artwork: require("../../assets/images/crown-of-thorns.png"),
   },
   {
     id: "stars",
     title: "Where Stars Sleep",
     author: "Iris Everly",
     status: "Want to Read",
-    artwork: require("../../assets/images/lavender-castle-cover.png"),
+    artwork: require("../../assets/images/where-stars-sleep.png"),
   },
 ];
 
@@ -50,7 +49,8 @@ type Book = {
   artwork: ImageSourcePropType;
 };
 
-function BookCover({ book, small = false }: { book: Book; small?: boolean }) {
+// The title and author are already part of these cover images.
+function BookCover({ book }: { book: Book }) {
   return (
     <View style={styles.cover}>
       <Image
@@ -59,21 +59,6 @@ function BookCover({ book, small = false }: { book: Book; small?: boolean }) {
         resizeMode="cover"
         accessible={false}
       />
-
-      <View style={styles.coverFrame}>
-        <Text style={styles.coverStar}>✧</Text>
-
-        <Text
-          numberOfLines={4}
-          style={[styles.coverTitle, small && { fontSize: 10, lineHeight: 12 }]}
-        >
-          {book.title}
-        </Text>
-
-        {!small && (
-          <Text style={styles.coverAuthor}>{book.author.toUpperCase()}</Text>
-        )}
-      </View>
     </View>
   );
 }
@@ -95,7 +80,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 32 }}
       >
-        {/* Illustrated header */}
+        {/* Castle header */}
         <View style={styles.hero}>
           <Image
             source={require("../../assets/images/sanctuary-garden.png")}
@@ -105,7 +90,6 @@ export default function HomeScreen() {
           />
 
           <View style={styles.brand}>
-            <Text style={styles.brandStars}>✧ ☾ ✧</Text>
             <Text style={styles.brandTitle}>Starbound</Text>
           </View>
 
@@ -116,12 +100,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.content}>
-          <View style={styles.sectionHeading}>
-            <Text style={styles.welcome}>My reading</Text>
-            <Text style={styles.goldStar}>✧</Text>
-          </View>
-
-          {/* Current book */}
+          {/* Currently reading */}
           <View style={styles.sectionHeading}>
             <Text style={styles.heading}>Currently reading</Text>
             <Pressable
@@ -144,7 +123,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={{ width: 70 }}>
-              <BookCover book={currentBook} small />
+              <BookCover book={currentBook} />
             </View>
 
             <View style={styles.readingDetails}>
@@ -190,34 +169,8 @@ export default function HomeScreen() {
             ))}
           </View>
 
-          {/* Reading goal */}
-          <View style={styles.goalCard}>
-            <View style={styles.sectionHeading}>
-              <Text style={styles.heading}>Reading goal</Text>
-              <Text style={styles.goldStar}>☾</Text>
-            </View>
-
-            <Text style={styles.goalNumber}>
-              {completed}
-              <Text style={styles.goalLabel}> / {goal} books</Text>
-            </Text>
-
-            <View
-              accessibilityRole="progressbar"
-              accessibilityValue={{
-                min: 0,
-                max: goal,
-                now: completed,
-              }}
-              style={styles.progressTrack}
-            >
-              <View
-                style={[styles.progressFill, { width: `${progress * 100}%` }]}
-              />
-            </View>
-
-            <Text style={styles.author}>Sample library</Text>
-          </View>
+          {/* Illustrated reading goal */}
+          <ReadingGoalCard completed={completed} goal={goal} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -245,21 +198,18 @@ const styles = StyleSheet.create({
   },
   brand: {
     alignItems: "center",
-    paddingTop: 28,
-    gap: 6,
+    paddingTop: 24,
   },
-  brandStars: {
-    fontSize: 14,
-    letterSpacing: 6,
-    color: colors.plum,
-  },
+
   brandTitle: {
-    fontFamily: serif,
-    fontSize: 43,
-    color: colors.text,
-    textShadowColor: "#FFF5E8",
-    textShadowRadius: 10,
+    fontFamily: "StorySemiBold",
+    fontSize: 52,
+    lineHeight: 62,
+    letterSpacing: 0.5,
+    color: "#43243B",
+    textShadowColor: "rgba(255, 240, 218, 0.9)",
     textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   hangingStar: {
     position: "absolute",
@@ -377,60 +327,80 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  coverFrame: {
-    flex: 1,
-    margin: 5,
-    padding: 4,
-    gap: 6,
-    borderWidth: 0.5,
-    borderColor: "#D9BA8799",
-    borderRadius: 3,
+  goalScene: {
+    width: "100%",
+    maxWidth: 340,
+    aspectRatio: 0.8,
+    alignSelf: "center",
+  },
+  goalGlow: {
+    position: "absolute",
+    left: "22%",
+    right: "22%",
+    top: "24%",
+    bottom: "15%",
+    borderRadius: 150,
+    backgroundColor: "#F0E2ED",
+    opacity: 0.35,
+  },
+  goalArtwork: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+  },
+  goalContent: {
+    position: "absolute",
+    left: "30%",
+    right: "30%",
+    top: "37%",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 4,
   },
-  coverStar: {
-    color: "#E7C999",
-    fontSize: 11,
+  goalTitle: {
+    fontFamily: serif,
+    fontSize: 25,
+    lineHeight: 30,
+    color: colors.text,
+    textAlign: "center",
   },
-  coverTitle: {
+  goalYear: {
     fontFamily: serif,
     fontSize: 16,
-    lineHeight: 19,
-    color: "#FFF0D8",
-    textAlign: "center",
-    textShadowColor: "#21162E",
-    textShadowRadius: 6,
-    textShadowOffset: { width: 0, height: 1 },
-  },
-  coverAuthor: {
-    color: "#F1DCC0",
-    fontSize: 7,
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  goalCard: {
-    padding: 20,
-    gap: 14,
-    borderRadius: theme.radius.card,
-    backgroundColor: colors.lavender,
-    borderWidth: 1,
-    borderColor: "#DECDDF",
-    marginTop: 6,
+    lineHeight: 20,
+    letterSpacing: 2,
+    color: colors.muted,
   },
   goalNumber: {
     fontFamily: serif,
-    fontSize: 34,
+    fontSize: 52,
+    lineHeight: 58,
     color: colors.text,
+    marginTop: 4,
   },
   goalLabel: {
-    fontSize: 17,
+    fontFamily: serif,
+    fontSize: 29,
+    color: colors.plum,
+  },
+  goalBooks: {
+    fontFamily: serif,
+    fontSize: 20,
+    lineHeight: 24,
+    color: colors.plum,
+  },
+  goalPercent: {
+    fontSize: 10,
+    lineHeight: 16,
     color: colors.muted,
+    marginTop: 3,
   },
   progressTrack: {
-    height: 7,
+    width: "100%",
+    height: 5,
     borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: "#DBCBD9",
+    backgroundColor: "#DDCAD8",
+    marginTop: 9,
   },
   progressFill: {
     height: "100%",

@@ -61,6 +61,9 @@ export default function ReviewsScreen() {
 
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
 
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
@@ -122,11 +125,47 @@ export default function ReviewsScreen() {
   );
 
   function startReview(bookId: string, existingReview?: Review) {
+    if (saving || deletingReviewId) return;
+    setPendingDeleteId(null);
     setSelectedBookId(bookId);
     setEditingReviewId(existingReview?.id ?? null);
     setRating(existingReview?.rating ?? 0);
     setBody(existingReview?.body ?? "");
     setMessage("");
+  }
+
+  async function handleDeleteReview(reviewId: string) {
+    if (!userId || saving || deletingReviewId) return;
+
+    setDeletingReviewId(reviewId);
+    setMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("reviews")
+        .delete()
+        .eq("id", reviewId)
+        .eq("user_id", userId)
+        .select("id")
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      setReviews((current) =>
+        current.filter((review) => review.id !== reviewId),
+      );
+
+      setPendingDeleteId(null);
+      setMessage("Your review has been deleted.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not delete your review. Please try again.",
+      );
+    } finally {
+      setDeletingReviewId(null);
+    }
   }
 
   async function handleSaveReview() {
@@ -284,12 +323,70 @@ export default function ReviewsScreen() {
 
                     <Pressable
                       accessibilityRole="button"
-                      disabled={saving}
+                      disabled={saving || !!deletingReviewId}
                       onPress={() => startReview(entry.book_id, review)}
                       style={styles.writeButton}
                     >
                       <Text style={styles.actionText}>Edit review</Text>
                     </Pressable>
+
+                    {pendingDeleteId === review.id ? (
+                      <View
+                        style={{
+                          marginTop: 10,
+                          padding: 14,
+                          borderRadius: 14,
+                          backgroundColor: colors.pink,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.text,
+                            fontSize: 14,
+                            lineHeight: 22,
+                          }}
+                        >
+                          Delete this review? Your book will stay in your
+                          library.
+                        </Text>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={saving || !!deletingReviewId}
+                          onPress={() => void handleDeleteReview(review.id)}
+                          style={styles.textButton}
+                        >
+                          <Text style={styles.actionText}>
+                            {deletingReviewId === review.id
+                              ? "Deleting..."
+                              : "Yes, delete review"}
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={!!deletingReviewId}
+                          onPress={() => setPendingDeleteId(null)}
+                          style={styles.textButton}
+                        >
+                          <Text style={{ color: colors.plum, fontSize: 14 }}>
+                            Cancel
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={saving || !!deletingReviewId}
+                        onPress={() => {
+                          setPendingDeleteId(review.id);
+                          setMessage("");
+                        }}
+                        style={styles.textButton}
+                      >
+                        <Text style={styles.actionText}>Delete review</Text>
+                      </Pressable>
+                    )}
                   </>
                 ) : isWriting ? (
                   <View style={styles.form}>

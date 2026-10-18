@@ -59,6 +59,8 @@ export default function ReviewsScreen() {
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState("");
 
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
@@ -119,10 +121,11 @@ export default function ReviewsScreen() {
     }, [userId]),
   );
 
-  function startReview(bookId: string) {
+  function startReview(bookId: string, existingReview?: Review) {
     setSelectedBookId(bookId);
-    setRating(0);
-    setBody("");
+    setEditingReviewId(existingReview?.id ?? null);
+    setRating(existingReview?.rating ?? 0);
+    setBody(existingReview?.body ?? "");
     setMessage("");
   }
 
@@ -138,32 +141,52 @@ export default function ReviewsScreen() {
     setMessage("");
 
     try {
-      const { data, error } = await supabase
-        .from("reviews")
-        .insert({
-          user_id: userId,
-          book_id: selectedBookId,
-          rating,
-          body: body.trim(),
-        })
+      const query = editingReviewId
+        ? supabase
+            .from("reviews")
+            .update({
+              rating,
+              body: body.trim(),
+            })
+            .eq("id", editingReviewId)
+            .eq("user_id", userId)
+            .eq("book_id", selectedBookId)
+        : supabase.from("reviews").insert({
+            user_id: userId,
+            book_id: selectedBookId,
+            rating,
+            body: body.trim(),
+          });
+
+      const { data, error } = await query
         .select("id, book_id, rating, body, created_at")
         .single();
 
       if (error) {
         if (error.code === "23505") {
           throw new Error(
-            "You already reviewed this book. Reopen the Reviews tab to refresh.",
+            "You already reviewed this book. Reopen Reviews to refresh.",
           );
         }
 
         throw new Error(error.message);
       }
 
-      setReviews((current) => [...current, data]);
+      setReviews((current) => [
+        ...current.filter((review) => review.book_id !== data.book_id),
+        data,
+      ]);
+
+      setMessage(
+        editingReviewId
+          ? "Your review has been updated."
+          : "Your review has been saved.",
+      );
+
       setSelectedBookId(null);
+      setEditingReviewId(null);
       setRating(0);
       setBody("");
-      setMessage("Your review has been saved.");
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -253,10 +276,21 @@ export default function ReviewsScreen() {
                   </View>
                 </View>
 
-                {review ? (
-                  <Text style={styles.reviewBody}>
-                    {review.body || "Rated without a written review."}
-                  </Text>
+                {review && !isWriting ? (
+                  <>
+                    <Text style={styles.reviewBody}>
+                      {review.body || "Rated without a written review."}
+                    </Text>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={saving}
+                      onPress={() => startReview(entry.book_id, review)}
+                      style={styles.writeButton}
+                    >
+                      <Text style={styles.actionText}>Edit review</Text>
+                    </Pressable>
+                  </>
                 ) : isWriting ? (
                   <View style={styles.form}>
                     <Text style={styles.label}>Your rating</Text>
@@ -306,7 +340,9 @@ export default function ReviewsScreen() {
                       {saving ? (
                         <ActivityIndicator color={colors.card} />
                       ) : (
-                        <Text style={styles.saveText}>Save review</Text>
+                        <Text style={styles.saveText}>
+                          {editingReviewId ? "Save changes" : "Save review"}
+                        </Text>
                       )}
                     </Pressable>
 

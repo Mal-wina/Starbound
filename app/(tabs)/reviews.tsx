@@ -16,6 +16,8 @@ import { theme } from "../../constants/theme";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../providers/AuthProvider";
 
+import FloralBackground from "../../components/FloralBackground";
+
 const colors = theme.colors;
 
 type ReviewBook = {
@@ -243,6 +245,7 @@ export default function ReviewsScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
+        <FloralBackground />
         <Text style={styles.heading}>My Reviews</Text>
 
         {!loading && (
@@ -321,71 +324,124 @@ export default function ReviewsScreen() {
                       {review.body || "Rated without a written review."}
                     </Text>
 
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={saving || !!deletingReviewId}
-                      onPress={() => startReview(entry.book_id, review)}
-                      style={styles.writeButton}
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "flex-start",
+                        gap: 15,
+                        alignItems: "center",
+                        marginTop: 16,
+                        paddingTop: 6,
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                      }}
                     >
-                      <Text style={styles.actionText}>Edit review</Text>
-                    </Pressable>
-
-                    {pendingDeleteId === review.id ? (
-                      <View
-                        style={{
-                          marginTop: 10,
-                          padding: 14,
-                          borderRadius: 14,
-                          backgroundColor: colors.pink,
-                        }}
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={saving || !!deletingReviewId}
+                        onPress={() => startReview(entry.book_id, review)}
+                        style={{ paddingVertical: 12, paddingRight: 16 }}
                       >
-                        <Text
-                          style={{
-                            color: colors.text,
-                            fontSize: 14,
-                            lineHeight: 22,
-                          }}
-                        >
-                          Delete this review? Your book will stay in your
-                          library.
-                        </Text>
+                        <Text style={styles.actionText}>Edit review</Text>
+                      </Pressable>
 
-                        <Pressable
-                          accessibilityRole="button"
-                          disabled={saving || !!deletingReviewId}
-                          onPress={() => void handleDeleteReview(review.id)}
-                          style={styles.textButton}
-                        >
-                          <Text style={styles.actionText}>
-                            {deletingReviewId === review.id
-                              ? "Deleting..."
-                              : "Yes, delete review"}
-                          </Text>
-                        </Pressable>
-
-                        <Pressable
-                          accessibilityRole="button"
-                          disabled={!!deletingReviewId}
-                          onPress={() => setPendingDeleteId(null)}
-                          style={styles.textButton}
-                        >
-                          <Text style={{ color: colors.plum, fontSize: 14 }}>
-                            Cancel
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ) : (
                       <Pressable
                         accessibilityRole="button"
                         disabled={saving || !!deletingReviewId}
                         onPress={() => {
-                          setPendingDeleteId(review.id);
+                          setPendingDeleteId(
+                            pendingDeleteId === review.id ? null : review.id,
+                          );
                           setMessage("");
                         }}
-                        style={styles.textButton}
+                        style={{ paddingVertical: 12, paddingHorizontal: 4 }}
                       >
-                        <Text style={styles.actionText}>Delete review</Text>
+                        <Text style={{ color: colors.muted, fontSize: 14 }}>
+                          Delete
+                        </Text>
                       </Pressable>
+                    </View>
+
+                    {pendingDeleteId === review.id && (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          padding: 14,
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: "StorySemiBold",
+                            fontSize: 23,
+                            color: colors.text,
+                          }}
+                        >
+                          Delete this review?
+                        </Text>
+
+                        <Text
+                          style={{
+                            marginTop: 4,
+                            color: colors.muted,
+                            fontSize: 13,
+                            lineHeight: 20,
+                          }}
+                        >
+                          Your book will stay in your library.
+                        </Text>
+
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            gap: 10,
+                            marginTop: 12,
+                          }}
+                        >
+                          <Pressable
+                            accessibilityRole="button"
+                            disabled={!!deletingReviewId}
+                            onPress={() => setPendingDeleteId(null)}
+                            style={{
+                              paddingHorizontal: 14,
+                              paddingVertical: 12,
+                            }}
+                          >
+                            <Text style={{ color: colors.plum, fontSize: 14 }}>
+                              Keep review
+                            </Text>
+                          </Pressable>
+
+                          <Pressable
+                            accessibilityRole="button"
+                            disabled={saving || !!deletingReviewId}
+                            onPress={() => void handleDeleteReview(review.id)}
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 12,
+                              borderRadius: 12,
+                              backgroundColor: colors.rose,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.card,
+                                fontSize: 14,
+                                fontWeight: "600",
+                              }}
+                            >
+                              {deletingReviewId === review.id
+                                ? "Deleting..."
+                                : "Delete"}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
                     )}
                   </>
                 ) : isWriting ? (
@@ -488,9 +544,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heading: {
-    fontFamily: "StorySemiBold",
-    fontSize: 36,
-    color: colors.text,
+    fontFamily: "StoryItalic",
+    fontSize: 40,
+    lineHeight: 46,
+    color: colors.plum,
+    marginTop: -25,
   },
   summary: {
     color: colors.muted,

@@ -15,6 +15,8 @@ import { theme } from "../../constants/theme";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../providers/AuthProvider";
 
+import FloralBackground from "../../components/FloralBackground";
+
 const colors = theme.colors;
 
 const statuses = [
@@ -259,9 +261,11 @@ export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <ScrollView
+        style={{ zIndex: 1, backgroundColor: "transparent" }}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
+        <FloralBackground />
         <View style={styles.heading}>
           <Text style={styles.title}>My Library</Text>
 
@@ -566,12 +570,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    marginTop: -25,
     marginBottom: 24,
   },
   title: {
-    fontFamily: "StorySemiBold",
-    fontSize: 36,
-    color: colors.text,
+    fontFamily: "StoryItalic",
+    fontSize: 40,
+    lineHeight: 46,
+    color: colors.plum,
     flexShrink: 1,
   },
   addButton: {

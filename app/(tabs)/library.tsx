@@ -77,6 +77,9 @@ export default function LibraryScreen() {
   const [editingBookId, setEditingBookId] = useState<string | null>(null);
   const [updatingBookId, setUpdatingBookId] = useState<string | null>(null);
 
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingBookId, setDeletingBookId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!userId) return;
 
@@ -168,7 +171,7 @@ export default function LibraryScreen() {
     entry: LibraryEntry,
     nextStatus: ReadingStatus,
   ) {
-    if (!userId || updatingBookId || saving) return;
+    if (!userId || updatingBookId || saving || deletingBookId) return;
 
     if (entry.status === nextStatus) {
       setEditingBookId(null);
@@ -213,6 +216,46 @@ export default function LibraryScreen() {
       setUpdatingBookId(null);
     }
   }
+
+  async function handleRemoveBook(bookId: string) {
+    if (!userId || deletingBookId || updatingBookId || saving) return;
+
+    setDeletingBookId(bookId);
+    setMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("user_books")
+        .delete()
+        .eq("user_id", userId)
+        .eq("book_id", bookId)
+        .select("book_id")
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      setEntries((current) =>
+        current.filter((entry) => entry.book_id !== bookId),
+      );
+
+      setPendingDeleteId(null);
+      setEditingBookId(null);
+      setMessage("Book removed from your library.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not remove the book. Please try again.",
+      );
+    } finally {
+      setDeletingBookId(null);
+    }
+  }
+
+  const selectedEntry = entries.find(
+    (entry) => entry.book_id === editingBookId,
+  );
+
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <ScrollView
@@ -325,6 +368,103 @@ export default function LibraryScreen() {
           </Text>
         ) : null}
 
+        {selectedEntry && (
+          <View style={styles.form}>
+            <Text style={styles.formTitle}>{selectedEntry.books.title}</Text>
+
+            <Text style={styles.label}>Reading status</Text>
+
+            <View style={styles.statusOptions}>
+              {statuses.map((option) => (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    selected: selectedEntry.status === option.value,
+                  }}
+                  disabled={!!updatingBookId || !!deletingBookId || saving}
+                  onPress={() =>
+                    void handleChangeStatus(selectedEntry, option.value)
+                  }
+                  style={[
+                    styles.statusOption,
+                    selectedEntry.status === option.value &&
+                      styles.statusSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      selectedEntry.status === option.value &&
+                        styles.statusTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {updatingBookId ? (
+              <ActivityIndicator
+                color={colors.rose}
+                style={{ marginTop: 16 }}
+              />
+            ) : null}
+
+            {pendingDeleteId === selectedEntry.book_id ? (
+              <View style={{ marginTop: 20 }}>
+                <Text style={{ color: colors.text, lineHeight: 22 }}>
+                  Remove this book and your review for it?
+                </Text>
+
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!!deletingBookId || !!updatingBookId || saving}
+                  onPress={() => void handleRemoveBook(selectedEntry.book_id)}
+                  style={{ paddingVertical: 14 }}
+                >
+                  <Text style={{ color: colors.rose, fontWeight: "600" }}>
+                    {deletingBookId ? "Removing..." : "Yes, remove"}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!!deletingBookId}
+                  onPress={() => setPendingDeleteId(null)}
+                  style={{ paddingVertical: 12 }}
+                >
+                  <Text style={{ color: colors.plum }}>Cancel removal</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                disabled={!!deletingBookId || !!updatingBookId || saving}
+                onPress={() => setPendingDeleteId(selectedEntry.book_id)}
+                style={{ paddingTop: 22, paddingBottom: 12 }}
+              >
+                <Text style={{ color: colors.rose, fontSize: 14 }}>
+                  Remove from my library
+                </Text>
+              </Pressable>
+            )}
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={!!updatingBookId || !!deletingBookId}
+              onPress={() => {
+                setEditingBookId(null);
+                setPendingDeleteId(null);
+              }}
+              style={{ paddingVertical: 12 }}
+            >
+              <Text style={{ color: colors.plum, fontSize: 14 }}>Close</Text>
+            </Pressable>
+          </View>
+        )}
+
         {loading ? (
           <ActivityIndicator color={colors.rose} style={{ marginTop: 30 }} />
         ) : entries.length === 0 ? (
@@ -375,64 +515,30 @@ export default function LibraryScreen() {
                     {book.genre}
                   </Text>
 
-                  <Text style={styles.bookStatus}>
-                    {
-                      statuses.find((option) => option.value === entry.status)
-                        ?.label
-                    }
-                  </Text>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.bookStatus}>
+                      {
+                        statuses.find((option) => option.value === entry.status)
+                          ?.label
+                      }
+                    </Text>
+                  </View>
 
                   <Pressable
                     accessibilityRole="button"
-                    disabled={!!updatingBookId || saving}
-                    onPress={() =>
+                    accessibilityLabel={`Manage ${book.title}`}
+                    disabled={!!updatingBookId || !!deletingBookId || saving}
+                    onPress={() => {
                       setEditingBookId(
                         editingBookId === entry.book_id ? null : entry.book_id,
-                      )
-                    }
-                    style={{ paddingVertical: 12 }}
+                      );
+                      setPendingDeleteId(null);
+                      setMessage("");
+                    }}
+                    style={styles.manageButton}
                   >
-                    <Text style={{ color: colors.plum, fontSize: 13 }}>
-                      {updatingBookId === entry.book_id
-                        ? "Saving..."
-                        : editingBookId === entry.book_id
-                          ? "Cancel"
-                          : "Change status"}
-                    </Text>
+                    <Text style={styles.manageText}>Manage</Text>
                   </Pressable>
-
-                  {editingBookId === entry.book_id && (
-                    <View style={styles.statusOptions}>
-                      {statuses.map((option) => (
-                        <Pressable
-                          key={option.value}
-                          accessibilityRole="button"
-                          accessibilityState={{
-                            selected: entry.status === option.value,
-                          }}
-                          disabled={!!updatingBookId || saving}
-                          onPress={() =>
-                            void handleChangeStatus(entry, option.value)
-                          }
-                          style={[
-                            styles.statusOption,
-                            entry.status === option.value &&
-                              styles.statusSelected,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusText,
-                              entry.status === option.value &&
-                                styles.statusTextSelected,
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
                 </View>
               );
             })}
@@ -473,6 +579,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 12,
     borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   addButtonText: {
     color: colors.text,
@@ -490,6 +598,7 @@ const styles = StyleSheet.create({
     fontFamily: "StoryItalic",
     fontSize: 28,
     color: colors.text,
+    flexShrink: 1,
     marginBottom: 8,
   },
   label: {
@@ -527,7 +636,7 @@ const styles = StyleSheet.create({
     borderColor: colors.plum,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.text,
   },
   statusTextSelected: {
@@ -576,10 +685,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    rowGap: 26,
+    rowGap: 22,
   },
   book: {
-    width: "47%",
+    width: "48%",
+    padding: 10,
+    borderRadius: 16,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   coverFrame: {
     width: "100%",
@@ -587,6 +701,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: colors.lavender,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cover: {
     position: "absolute",
@@ -598,50 +714,76 @@ const styles = StyleSheet.create({
   fallbackCover: {
     width: "100%",
     aspectRatio: 2 / 3,
-    padding: 15,
+    padding: 8,
     borderRadius: 10,
     borderWidth: 2,
     borderColor: colors.gold,
     backgroundColor: colors.plum,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   coverDecoration: {
     color: colors.gold,
-    fontSize: 28,
-    marginBottom: 12,
+    fontSize: 22,
+    marginBottom: 8,
   },
   coverTitle: {
     fontFamily: "StorySemiBold",
-    fontSize: 25,
+    fontSize: 18,
     color: colors.card,
     textAlign: "center",
   },
   coverAuthor: {
-    marginTop: 12,
+    marginTop: 8,
     color: colors.pink,
-    fontSize: 11,
+    fontSize: 10,
     textAlign: "center",
   },
   bookTitle: {
     fontFamily: "StorySemiBold",
-    fontSize: 22,
+    fontSize: 21,
+    lineHeight: 24,
     color: colors.text,
-    marginTop: 10,
+    marginTop: 9,
   },
   author: {
     color: colors.muted,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 18,
     marginTop: 4,
   },
   genre: {
     color: colors.muted,
-    fontSize: 11,
-    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.pink,
   },
   bookStatus: {
-    color: colors.rose,
+    color: colors.text,
     fontSize: 12,
+    lineHeight: 17,
+  },
+  manageButton: {
     marginTop: 8,
+    minHeight: 44,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  manageText: {
+    color: colors.plum,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

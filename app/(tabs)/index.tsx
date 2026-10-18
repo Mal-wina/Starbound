@@ -1,5 +1,7 @@
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   ImageSourcePropType,
   Pressable,
@@ -9,65 +11,187 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import ReadingGoalCard from "../../components/ReadingGoalCard";
 
+import ReadingGoalCard from "../../components/ReadingGoalCard";
 import { theme } from "../../constants/theme";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../providers/AuthProvider";
 
 const colors = theme.colors;
 const serif = "StorySerif";
 
-// Sample data until we connect Supabase.
-const books = [
-  {
-    id: "moon",
-    title: "The Moonlit Garden",
-    author: "Elara Vale",
-    status: "Currently Reading",
-    artwork: require("../../assets/images/a-moonlit-garden.png"),
-  },
-  {
-    id: "crown",
-    title: "A Crown of Thorns",
-    author: "Lyra Wren",
-    status: "Finished",
-    artwork: require("../../assets/images/crown-of-thorns.png"),
-  },
-  {
-    id: "stars",
-    title: "Where Stars Sleep",
-    author: "Iris Everly",
-    status: "Want to Read",
-    artwork: require("../../assets/images/where-stars-sleep.png"),
-  },
-];
+type LibraryRow = {
+  book_id: string;
+  status: string;
+  finished_at: string | null;
+  books: {
+    title: string;
+    author: string;
+  };
+};
 
 type Book = {
   id: string;
   title: string;
   author: string;
   status: string;
-  artwork: ImageSourcePropType;
+  finishedAt: string | null;
+  artwork?: ImageSourcePropType;
 };
 
-// The title and author are already part of these cover images.
+type HomeData = {
+  username: string;
+  goal: number;
+  books: Book[];
+};
+
+const covers = {
+  "the moonlit garden|elara vale": require("../../assets/images/a-moonlit-garden.png"),
+  "a crown of thorns|lyra wren": require("../../assets/images/crown-of-thorns.png"),
+  "where stars sleep|iris everly": require("../../assets/images/where-stars-sleep.png"),
+};
+
+function getArtwork(title: string, author: string) {
+  const key = `${title.trim().toLowerCase()}|${author.trim().toLowerCase()}`;
+  return covers[key as keyof typeof covers];
+}
+
 function BookCover({ book }: { book: Book }) {
   return (
     <View style={styles.cover}>
-      <Image
-        source={book.artwork}
-        style={styles.coverImage}
-        resizeMode="cover"
-        accessible={false}
-      />
+      {book.artwork ? (
+        <Image
+          source={book.artwork}
+          style={styles.coverImage}
+          resizeMode="contain"
+          accessible={false}
+        />
+      ) : (
+        <View
+          style={{
+            flex: 1,
+            padding: 8,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 1,
+            borderColor: colors.gold,
+          }}
+        >
+          <Text
+            numberOfLines={4}
+            style={{
+              fontFamily: "StorySemiBold",
+              fontSize: 17,
+              color: colors.card,
+              textAlign: "center",
+            }}
+          >
+            {book.title}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
 export default function HomeScreen() {
-  const currentBook = books[0];
-  const completed = books.filter((book) => book.status === "Finished").length;
-  const goal = 12;
-  const progress = Math.min(completed / goal, 1);
+  const { session } = useAuth();
+  const userId = session?.user.id;
+
+  const [data, setData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  // Refresh whenever the reader returns to Home.
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+
+      let active = true;
+
+      async function loadHome() {
+        setLoading(true);
+        setMessage("");
+
+        try {
+          const [profileResult, libraryResult] = await Promise.all([
+            supabase
+              .from("profiles")
+              .select("username, reading_goal")
+              .eq("id", userId)
+              .single(),
+
+            supabase
+              .from("user_books")
+              .select("book_id, status, finished_at, books(title, author)")
+              .eq("user_id", userId)
+              .order("added_at", { ascending: false })
+              .returns<LibraryRow[]>(),
+          ]);
+
+          if (profileResult.error) {
+            throw new Error(profileResult.error.message);
+          }
+
+          if (libraryResult.error) {
+            throw new Error(libraryResult.error.message);
+          }
+
+          const savedBooks: Book[] = (libraryResult.data ?? []).map(
+            (entry) => ({
+              id: entry.book_id,
+              title: entry.books.title,
+              author: entry.books.author,
+              status: entry.status,
+              finishedAt: entry.finished_at,
+              artwork: getArtwork(entry.books.title, entry.books.author),
+            }),
+          );
+
+          if (active) {
+            setData({
+              username: profileResult.data.username,
+              goal: profileResult.data.reading_goal,
+              books: savedBooks,
+            });
+          }
+        } catch (error) {
+          if (active) {
+            setMessage(
+              error instanceof Error
+                ? error.message
+                : "Could not load your reading overview.",
+            );
+          }
+        } finally {
+          if (active) setLoading(false);
+        }
+      }
+
+      void loadHome();
+
+      return () => {
+        active = false;
+      };
+    }, [userId]),
+  );
+
+  const books = data?.books ?? [];
+
+  const currentBook = books.find((book) => book.status === "currently_reading");
+
+  const totalCompleted = books.filter(
+    (book) => book.status === "finished",
+  ).length;
+
+  const currentYear = new Date().getFullYear();
+
+  const completedThisYear = books.filter(
+    (book) =>
+      book.status === "finished" &&
+      book.finishedAt !== null &&
+      new Date(book.finishedAt).getFullYear() === currentYear,
+  ).length;
 
   function openLibrary() {
     router.push("/library");
@@ -80,7 +204,6 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 32 }}
       >
-        {/* Castle header */}
         <View style={styles.hero}>
           <Image
             source={require("../../assets/images/sanctuary-garden.png")}
@@ -100,77 +223,117 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.content}>
-          {/* Currently reading */}
-          <View style={styles.sectionHeading}>
-            <Text style={styles.heading}>Currently reading</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={openLibrary}
-              hitSlop={10}
-            >
-              <Text style={styles.link}>My library ›</Text>
-            </Pressable>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="View current book in my library"
-            onPress={openLibrary}
-            style={styles.readingCard}
-          >
-            <View style={styles.ribbon}>
-              <Text style={{ color: "#FFF4D8", fontSize: 9 }}>✦</Text>
-            </View>
-
-            <View style={{ width: 70 }}>
-              <BookCover book={currentBook} />
-            </View>
-
-            <View style={styles.readingDetails}>
-              <Text style={styles.bookTitle}>{currentBook.title}</Text>
-              <Text style={styles.author}>{currentBook.author}</Text>
-              <Text style={styles.status}>Currently Reading</Text>
-            </View>
-
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-
-          {/* Bookshelf */}
-          <View style={styles.sectionHeading}>
-            <Text style={styles.heading}>My bookshelf</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={openLibrary}
-              hitSlop={10}
-            >
-              <Text style={styles.link}>View all ›</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.bookshelf}>
-            {books.map((book) => (
-              <Pressable
-                key={book.id}
-                accessibilityRole="button"
-                accessibilityLabel={`View ${book.title} in my library`}
-                onPress={openLibrary}
-                style={styles.shelfBook}
-              >
-                <BookCover book={book} />
-
-                <Text numberOfLines={2} style={styles.shelfTitle}>
-                  {book.title}
+          {loading ? (
+            <ActivityIndicator color={colors.rose} />
+          ) : message ? (
+            <Text accessibilityRole="alert" style={styles.author}>
+              {message}
+            </Text>
+          ) : data ? (
+            <>
+              <View style={{ gap: 6 }}>
+                <Text style={styles.welcome}>
+                  Welcome back, {data.username}
                 </Text>
 
-                <Text numberOfLines={1} style={styles.author}>
-                  {book.author}
+                <Text style={styles.author}>
+                  {totalCompleted} {totalCompleted === 1 ? "book" : "books"}{" "}
+                  finished
+                  {" · "}
+                  {books.length} in your library
                 </Text>
-              </Pressable>
-            ))}
-          </View>
+              </View>
 
-          {/* Illustrated reading goal */}
-          <ReadingGoalCard completed={completed} goal={goal} />
+              <View style={styles.sectionHeading}>
+                <Text style={styles.heading}>Currently reading</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={openLibrary}
+                  hitSlop={10}
+                >
+                  <Text style={styles.link}>My library ›</Text>
+                </Pressable>
+              </View>
+
+              {currentBook ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View current book in my library"
+                  onPress={openLibrary}
+                  style={styles.readingCard}
+                >
+                  <View style={styles.ribbon}>
+                    <Text style={{ color: "#FFF4D8", fontSize: 9 }}>✦</Text>
+                  </View>
+
+                  <View style={{ width: 70 }}>
+                    <BookCover book={currentBook} />
+                  </View>
+
+                  <View style={styles.readingDetails}>
+                    <Text style={styles.bookTitle}>{currentBook.title}</Text>
+                    <Text style={styles.author}>{currentBook.author}</Text>
+                    <Text style={styles.status}>Currently Reading</Text>
+                  </View>
+
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={openLibrary}
+                  style={styles.readingCard}
+                >
+                  <Text style={[styles.author, { flex: 1 }]}>
+                    Choose a book in My Library and mark it Currently Reading to
+                    display it here.
+                  </Text>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              )}
+
+              <View style={styles.sectionHeading}>
+                <Text style={styles.heading}>My bookshelf</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={openLibrary}
+                  hitSlop={10}
+                >
+                  <Text style={styles.link}>View all ›</Text>
+                </Pressable>
+              </View>
+
+              {books.length === 0 ? (
+                <Text style={styles.author}>
+                  Your library is empty. Add your first book in My Library.
+                </Text>
+              ) : (
+                <View style={styles.bookshelf}>
+                  {books.slice(0, 3).map((book) => (
+                    <Pressable
+                      key={book.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View ${book.title} in my library`}
+                      onPress={openLibrary}
+                      style={[styles.shelfBook, { flex: 0, width: "30%" }]}
+                    >
+                      <BookCover book={book} />
+
+                      <Text numberOfLines={2} style={styles.shelfTitle}>
+                        {book.title}
+                      </Text>
+
+                      <Text numberOfLines={1} style={styles.author}>
+                        {book.author}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              <ReadingGoalCard completed={completedThisYear} goal={data.goal} />
+            </>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

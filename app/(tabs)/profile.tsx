@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -6,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -29,47 +31,113 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [message, setMessage] = useState("");
+  const [booksRead, setBooksRead] = useState<number | null>(null);
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+  const [savingGoal, setSavingGoal] = useState(false);
 
-  useEffect(() => {
-    if (!userId) return;
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
 
-    let active = true;
+      let active = true;
 
-    async function loadProfile() {
-      setLoading(true);
-      setMessage("");
+      async function loadProfile() {
+        setLoading(true);
+        setMessage("");
 
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("username, reading_goal")
-          .eq("id", userId)
-          .single();
+        try {
+          const [profileResult, countResult] = await Promise.all([
+            supabase
+              .from("profiles")
+              .select("username, reading_goal")
+              .eq("id", userId)
+              .single(),
 
-        if (error) throw error;
+            supabase
+              .from("user_books")
+              .select("book_id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .eq("status", "finished"),
+          ]);
 
-        if (active) {
-          setProfile(data);
+          if (profileResult.error) {
+            throw new Error(profileResult.error.message);
+          }
+
+          if (countResult.error) {
+            throw new Error(countResult.error.message);
+          }
+
+          if (active) {
+            setProfile(profileResult.data);
+            setBooksRead(countResult.count ?? 0);
+            setEditingGoal(false);
+          }
+        } catch (error) {
+          if (active) {
+            setMessage(
+              error instanceof Error
+                ? error.message
+                : "Could not load your profile.",
+            );
+          }
+        } finally {
+          if (active) setLoading(false);
         }
-      } catch (error) {
-        if (active) {
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "Could not load your profile.",
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
       }
+
+      void loadProfile();
+
+      return () => {
+        active = false;
+      };
+    }, [userId]),
+  );
+
+  async function handleSaveGoal() {
+    if (!userId || !profile || savingGoal) return;
+
+    const value = goalInput.trim();
+
+    if (!/^\d+$/.test(value)) {
+      setMessage("Enter a whole number between 1 and 1000.");
+      return;
     }
 
-    void loadProfile();
+    const nextGoal = Number(value);
 
-    return () => {
-      active = false;
-    };
-  }, [userId]);
+    if (nextGoal < 1 || nextGoal > 1000) {
+      setMessage("Choose a goal between 1 and 1000 books.");
+      return;
+    }
+
+    setSavingGoal(true);
+    setMessage("");
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({ reading_goal: nextGoal })
+        .eq("id", userId)
+        .select("username, reading_goal")
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      setProfile(data);
+      setEditingGoal(false);
+      setMessage("Your reading goal has been saved.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save your goal. Please try again.",
+      );
+    } finally {
+      setSavingGoal(false);
+    }
+  }
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -143,7 +211,86 @@ export default function ProfileScreen() {
 
                   <View style={styles.divider} />
 
-                  <Text style={styles.goalNote}>Your year in stories</Text>
+                  <Text style={styles.goalNote}>
+                    {booksRead === null
+                      ? "Books read unavailable"
+                      : `${booksRead} ${booksRead === 1 ? "book" : "books"} read in total`}
+                  </Text>
+
+                  {editingGoal ? (
+                    <View style={{ width: "100%", marginTop: 18 }}>
+                      <TextInput
+                        accessibilityLabel="Yearly reading goal"
+                        value={goalInput}
+                        onChangeText={setGoalInput}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        editable={!savingGoal}
+                        style={{
+                          minHeight: 50,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 14,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          fontSize: 18,
+                          textAlign: "center",
+                        }}
+                      />
+
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={savingGoal}
+                        onPress={() => void handleSaveGoal()}
+                        style={[
+                          styles.button,
+                          { marginTop: 12, backgroundColor: colors.rose },
+                        ]}
+                      >
+                        {savingGoal ? (
+                          <ActivityIndicator color={colors.card} />
+                        ) : (
+                          <Text
+                            style={[styles.buttonText, { color: colors.card }]}
+                          >
+                            Save goal
+                          </Text>
+                        )}
+                      </Pressable>
+
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={savingGoal}
+                        onPress={() => {
+                          setEditingGoal(false);
+                          setMessage("");
+                        }}
+                        style={{ paddingVertical: 14, alignItems: "center" }}
+                      >
+                        <Text style={{ color: colors.plum, fontSize: 14 }}>
+                          Cancel
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={!profile}
+                      onPress={() => {
+                        if (!profile) return;
+                        setGoalInput(String(profile.reading_goal));
+                        setEditingGoal(true);
+                        setMessage("");
+                      }}
+                      style={{ paddingTop: 16, paddingBottom: 8 }}
+                    >
+                      <Text style={{ color: colors.rose, fontSize: 14 }}>
+                        Edit goal
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
 
                 <View style={styles.account}>

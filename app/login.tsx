@@ -1,16 +1,16 @@
 import { Redirect, Stack } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import { theme } from "../constants/theme";
@@ -117,7 +117,7 @@ export default function LoginScreen() {
         <View style={styles.page}>
           <View style={styles.hero}>
             <Image
-              source={require("../assets/images/sanctuary-garden.png")}
+              source={require("../assets/images/starbound-dawn-header.png")}
               style={styles.heroImage}
               resizeMode="cover"
               accessible={false}
